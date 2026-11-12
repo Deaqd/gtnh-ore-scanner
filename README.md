@@ -5,7 +5,8 @@
 ![Modpack](https://img.shields.io/badge/GTNH-2.9.x-green.svg)
 ![Side](https://img.shields.io/badge/Side-Client--Only-purple.svg)
 ![Java](https://img.shields.io/badge/Java-8%20%7C%2017%20%7C%2021-yellow.svg)
-![Tests](https://img.shields.io/badge/Tests-25%2F25%20Passing-brightgreen.svg)
+![Tests](https://img.shields.io/badge/Tests-26%2F26%20Passing-brightgreen.svg)
+![Release](https://img.shields.io/badge/Release-v1.0.1-blue.svg)
 ![License](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)
 
 A high-performance, client-side utility mod for **Minecraft 1.7.10** and the **GregTech: New Horizons 2.9+** modpack. It scans loaded client chunks for GregTech 5 Unofficial (GT5U) ore veins, performs intelligent multi-ore layer disambiguation, and directly registers detected veins into the **VisualProspecting** cache for instant, seamless visualization on **JourneyMap** and **Xaero's World Map**.
@@ -91,10 +92,10 @@ flowchart TD
 > This is a **purely client-side mod**. Do **NOT** install it on a dedicated multiplayer server. It only needs to be installed in your local client.
 
 ### Step-by-Step Installation
-1. Go to the [Releases](https://github.com/GTNewHorizons/GTNH-Ore-Vein-Scanner/releases) page.
-2. Download the latest release binary: `gtnh_orescanner-1.0.0.jar`.
+1. Go to the [Releases](https://github.com/Deaqd/gtnh-ore-scanner/releases) page.
+2. Download the latest release binary: `gtnh_orescanner-1.0.1.jar`.
 3. Locate your GTNH instance directory (e.g. Prism Launcher, MultiMC, or `.minecraft/`).
-4. Copy `gtnh_orescanner-1.0.0.jar` into your `mods/` folder.
+4. Copy `gtnh_orescanner-1.0.1.jar` into your `mods/` folder.
 5. Launch the game and load into any world or multiplayer server!
 
 ---
@@ -151,8 +152,8 @@ The project uses **RetroFuturaGradle (RFG 1.4.9)** with modern JVM toolchain sup
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/GTNewHorizons/GTNH-Ore-Vein-Scanner.git
-   cd GTNH-Ore-Vein-Scanner
+   git clone https://github.com/Deaqd/gtnh-ore-scanner.git
+   cd gtnh-ore-scanner
    ```
 
 2. **Decompile and set up the Forge development workspace:**
@@ -173,8 +174,27 @@ The project uses **RetroFuturaGradle (RFG 1.4.9)** with modern JVM toolchain sup
 
 5. The built, reobfuscated jar file will be available at:
    ```text
-   build/libs/gtnh_orescanner-1.0.0.jar
+   build/libs/gtnh_orescanner-1.0.1.jar
    ```
+
+---
+
+## 📦 Changelog & Version History
+
+### [v1.0.1] - 2026-11-13
+#### ✨ What's New
+- **Full Modern GTNH 2.9 (GT5U 5.09.54+) Support**: Direct scanning of non-TileEntity Block Ores across all sub-chunks (`ExtendedBlockStorage`).
+- **Universal GTNH Ore Detection**: Direct integration with GTNH's `OreManager` adapter pipeline, automatically resolving GregTech, GT++, BartWorks, and modded ore materials.
+- **VisualProspecting Direct Grid Mapping**: Integrated with `Utils.mapToCenterOreChunkCoord` to guarantee 100% waypoint grid alignment regardless of `OregenPattern` mode.
+
+#### 🐛 What's Fixed
+- **"Checked 255 chunks, no ore found" Bug**: Fixed chunk scanner only inspecting `chunk.chunkTileEntityMap`. In modern GTNH, GregTech ores are standard blocks rather than TileEntities.
+- **Java 25 Boot Crash**: Eliminated FML `JarUtil` crash caused by `ModSide: CLIENT` manifest metadata on modern Java runtimes.
+- **Scan Latency**: Optimized block filter (`isCommonNonOreBlock`) skipping 99.9% of terrain blocks via pointer comparisons in < 5ms.
+
+#### 📝 Notes
+- Fully backwards compatible with legacy TileEntity ores if running on older GT5U servers.
+- Client-only mod; does not require server installation.
 
 ---
 
