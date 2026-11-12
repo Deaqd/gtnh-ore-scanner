@@ -94,14 +94,12 @@ tasks.named('jar', Jar) {
     
     manifest {
         attributes([
-            'ModSide': 'CLIENT',
             'Specification-Title': project.property('modName'),
             'Specification-Version': project.property('modVersion'),
             'Specification-Vendor': 'GTNH Team',
             'Implementation-Title': project.property('modName'),
             'Implementation-Version': project.property('modVersion'),
             'Implementation-Vendor': 'GTNH Team',
-            'FMLCorePluginContainsFMLMod': 'false',
             'Created-By': "Gradle ${gradle.gradleVersion}"
         ])
     }

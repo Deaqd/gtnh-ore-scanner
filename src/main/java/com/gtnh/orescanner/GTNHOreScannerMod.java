@@ -18,10 +18,9 @@ import org.apache.logging.log4j.Logger;
     modid = GTNHOreScannerMod.MODID,
     name = GTNHOreScannerMod.NAME,
     version = GTNHOreScannerMod.VERSION,
-    dependencies = "required-after:visualprospecting;required-after:gregtech",
+    dependencies = "required-after:visualprospecting;after:gregtech",
     acceptableRemoteVersions = "*"
 )
-@SideOnly(Side.CLIENT)
 public class GTNHOreScannerMod {
 
     public static final String MODID = "gtnh_orescanner";
@@ -42,7 +41,9 @@ public class GTNHOreScannerMod {
     @EventHandler
     public void init(FMLInitializationEvent event) {
         LOG.info("Initializing " + NAME);
-        KeyBindings.init();
-        FMLCommonHandler.instance().bus().register(new KeyInputHandler());
+        if (event.getSide() == Side.CLIENT) {
+            KeyBindings.init();
+            FMLCommonHandler.instance().bus().register(new KeyInputHandler());
+        }
     }
 }
