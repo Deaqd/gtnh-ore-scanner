@@ -48,12 +48,15 @@ public class VisualProspectingBridge {
     private static Object veinSourceProspection = null;
 
     // Cached methods
-    private static Method putOreVeinsMethod = null;
+    private static Method putOreVeinsSingleArgMethod = null;
+    private static Method putOreVeinsTwoArgMethod = null;
     private static Method putOreVeinMethod = null;
     private static Method putProspectionResultsMethod = null;
     private static Method getVeinTypeStringMethod = null;
     private static Method getVeinTypeIdMethod = null;
     private static Method getVeinTypeShortMethod = null;
+    private static Method getVeinTypesMethod = null;
+    private static Field noVeinField = null;
 
     // Cached constructors
     private static Constructor<?> oreVeinPositionCtor = null;
@@ -161,63 +164,176 @@ public class VisualProspectingBridge {
 
         ensureInitialized();
 
-        try {
-            // Strategy 1: ClientCache.instance.putOreVeins(Collection/List)
-            if (clientCacheInstance != null && putOreVeinsMethod != null) {
-                putOreVeinsMethod.invoke(clientCacheInstance, positions);
-                GTNHOreScannerMod.LOG.debug("Injected " + positions.size() + " veins via ClientCache.putOreVeins");
-                return;
-            }
+        boolean injected = false;
 
-            // Strategy 2: ClientCache.instance.putOreVein(single) in a loop
-            if (clientCacheInstance != null && putOreVeinMethod != null) {
+        // Strategy 1: ClientCache.instance.putOreVeins(List) [single-argument overload]
+        if (!injected && clientCacheInstance != null && putOreVeinsSingleArgMethod != null) {
+            try {
+                putOreVeinsSingleArgMethod.invoke(clientCacheInstance, positions);
+                GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via ClientCache.putOreVeins(List)");
+                injected = true;
+            } catch (Throwable t) {
+                GTNHOreScannerMod.LOG.warn("Failed 1-arg putOreVeins: " + t.getMessage(), t);
+            }
+        }
+
+        // Strategy 2: ClientCache.instance.putOreVeins(List, boolean) [two-argument overload]
+        if (!injected && clientCacheInstance != null && putOreVeinsTwoArgMethod != null) {
+            try {
+                putOreVeinsTwoArgMethod.invoke(clientCacheInstance, positions, false);
+                GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via ClientCache.putOreVeins(List, boolean)");
+                injected = true;
+            } catch (Throwable t) {
+                GTNHOreScannerMod.LOG.warn("Failed 2-arg putOreVeins: " + t.getMessage(), t);
+            }
+        }
+
+        // Strategy 3: Dynamic reflection fallback across all methods on ClientCache instance
+        if (!injected && clientCacheInstance != null) {
+            for (Method m : clientCacheInstance.getClass().getMethods()) {
+                if ("putOreVeins".equals(m.getName())) {
+                    Class<?>[] pTypes = m.getParameterTypes();
+                    try {
+                        m.setAccessible(true);
+                        if (pTypes.length == 1 && pTypes[0].isAssignableFrom(List.class)) {
+                            m.invoke(clientCacheInstance, positions);
+                            GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via dynamic putOreVeins(List)");
+                            injected = true;
+                            break;
+                        } else if (pTypes.length == 2 && pTypes[0].isAssignableFrom(List.class) && (pTypes[1] == boolean.class || pTypes[1] == Boolean.class)) {
+                            m.invoke(clientCacheInstance, positions, false);
+                            GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via dynamic putOreVeins(List, boolean)");
+                            injected = true;
+                            break;
+                        }
+                    } catch (Throwable t) {
+                        GTNHOreScannerMod.LOG.warn("Failed dynamic putOreVeins: " + t.getMessage(), t);
+                    }
+                }
+            }
+        }
+
+        // Strategy 4: ClientCache.instance.putOreVein(single) in a loop
+        if (!injected && clientCacheInstance != null && putOreVeinMethod != null) {
+            try {
+                int count = 0;
                 for (Object pos : positions) {
                     putOreVeinMethod.invoke(clientCacheInstance, pos);
+                    count++;
                 }
-                GTNHOreScannerMod.LOG.debug("Injected " + positions.size() + " veins via ClientCache.putOreVein");
-                return;
+                GTNHOreScannerMod.LOG.info("Injected " + count + " veins via ClientCache.putOreVein loop");
+                injected = true;
+            } catch (Throwable t) {
+                GTNHOreScannerMod.LOG.warn("Failed single putOreVein loop: " + t.getMessage(), t);
             }
+        }
 
-            // Strategy 3: ClientCache.instance.putProspectionResults(positions, Collections.emptyList())
-            if (clientCacheInstance != null && putProspectionResultsMethod != null) {
+        // Strategy 5: ClientCache.instance.putProspectionResults(positions, Collections.emptyList())
+        if (!injected && clientCacheInstance != null && putProspectionResultsMethod != null) {
+            try {
                 putProspectionResultsMethod.invoke(clientCacheInstance, positions, Collections.emptyList());
-                GTNHOreScannerMod.LOG.debug("Injected " + positions.size() + " veins via putProspectionResults");
-                return;
+                GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via putProspectionResults");
+                injected = true;
+            } catch (Throwable t) {
+                GTNHOreScannerMod.LOG.warn("Failed putProspectionResults: " + t.getMessage(), t);
             }
+        }
 
-            // Strategy 4: LogicalClientCache static methods
-            if (logicalClientCacheClass != null) {
-                Method mPutVeins = findMethod(logicalClientCacheClass, "putOreVeins", List.class, Collection.class);
+        // Strategy 6: LogicalClientCache static methods
+        if (!injected && logicalClientCacheClass != null) {
+            try {
+                Method mPutVeins = findMethod(logicalClientCacheClass, "putOreVeins", List.class);
                 if (mPutVeins != null && Modifier.isStatic(mPutVeins.getModifiers())) {
                     mPutVeins.invoke(null, positions);
-                    GTNHOreScannerMod.LOG.debug("Injected " + positions.size() + " veins via LogicalClientCache.putOreVeins");
-                    return;
+                    GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via LogicalClientCache.putOreVeins");
+                    injected = true;
                 }
-
-                Method mPutVein = findMethod(logicalClientCacheClass, "putOreVein", oreVeinPositionClass, Object.class);
-                if (mPutVein != null && Modifier.isStatic(mPutVein.getModifiers())) {
-                    for (Object pos : positions) {
-                        mPutVein.invoke(null, pos);
-                    }
-                    GTNHOreScannerMod.LOG.debug("Injected " + positions.size() + " veins via LogicalClientCache.putOreVein");
-                    return;
-                }
+            } catch (Throwable t) {
+                GTNHOreScannerMod.LOG.warn("Failed LogicalClientCache: " + t.getMessage(), t);
             }
+        }
 
-            // Strategy 5: VisualProspecting_API.LogicalClient
-            if (vpApiClass != null) {
+        // Strategy 7: VisualProspecting_API.LogicalClient
+        if (!injected && vpApiClass != null) {
+            try {
                 Method mApi = findMethod(vpApiClass, "putProspectionResults", List.class, List.class);
                 if (mApi != null && Modifier.isStatic(mApi.getModifiers())) {
                     mApi.invoke(null, positions, Collections.emptyList());
-                    GTNHOreScannerMod.LOG.debug("Injected " + positions.size() + " veins via VisualProspecting_API");
-                    return;
+                    GTNHOreScannerMod.LOG.info("Injected " + positions.size() + " veins via VisualProspecting_API");
+                    injected = true;
+                }
+            } catch (Throwable t) {
+                GTNHOreScannerMod.LOG.warn("Failed VisualProspecting_API: " + t.getMessage(), t);
+            }
+        }
+
+        if (injected) {
+            refreshMapLayers();
+        } else {
+            GTNHOreScannerMod.LOG.warn("No suitable injection method succeeded for VisualProspecting cache.");
+        }
+    }
+
+    /**
+     * Forces JourneyMap / Navigator layers to refresh so that injected ore veins
+     * are immediately rendered without needing to re-open the map.
+     */
+    public static void refreshMapLayers() {
+        try {
+            Class<?> oreVeinLayerManagerClass = findClass(
+                    "com.sinthoras.visualprospecting.integration.model.layers.OreVeinLayerManager"
+            );
+            if (oreVeinLayerManagerClass != null) {
+                Field fInstance = findField(oreVeinLayerManagerClass, "instance", "INSTANCE");
+                Object layerManager = fInstance != null ? fInstance.get(null) : null;
+                if (layerManager != null) {
+                    Method mRefresh = findMethod(layerManager.getClass(), "forceRefresh");
+                    if (mRefresh != null) {
+                        mRefresh.invoke(layerManager);
+                        GTNHOreScannerMod.LOG.debug("Triggered OreVeinLayerManager.forceRefresh()");
+                    }
+
+                    Class<?> eventClass = findClass("com.gtnewhorizons.navigator.api.event.LayerRefreshEvent");
+                    if (eventClass != null) {
+                        Class<?> baseLayerClass = findClass("com.gtnewhorizons.navigator.api.model.layers.LayerManager");
+                        if (baseLayerClass != null) {
+                            Constructor<?> ctor = eventClass.getConstructor(baseLayerClass);
+                            if (ctor != null) {
+                                Object event = ctor.newInstance(layerManager);
+                                cpw.mods.fml.common.eventhandler.EventBus bus = net.minecraftforge.common.MinecraftForge.EVENT_BUS;
+                                if (bus != null) {
+                                    bus.post((cpw.mods.fml.common.eventhandler.Event) event);
+                                    GTNHOreScannerMod.LOG.debug("Posted LayerRefreshEvent to MinecraftForge.EVENT_BUS");
+                                }
+                            }
+                        }
+                    }
                 }
             }
-
-            GTNHOreScannerMod.LOG.warn("No suitable injection method found on VisualProspecting cache.");
         } catch (Throwable t) {
-            GTNHOreScannerMod.LOG.error("Failed to inject ore veins into VisualProspecting: " + t.getMessage(), t);
+            GTNHOreScannerMod.LOG.warn("Failed to trigger map layer refresh: " + t.getMessage());
         }
+    }
+
+    /**
+     * Checks whether a VeinType object represents an empty / missing vein.
+     */
+    public static boolean isNoVein(Object vt) {
+        if (vt == null) return true;
+        if (noVeinField != null) {
+            try {
+                if (vt == noVeinField.get(null)) return true;
+            } catch (Throwable ignored) {}
+        }
+        try {
+            Field fName = findField(vt.getClass(), "name");
+            if (fName != null) {
+                Object n = fName.get(vt);
+                if ("ore.mix.none".equals(n) || "NO_VEIN".equals(n)) return true;
+            }
+        } catch (Throwable ignored) {}
+        String s = vt.toString();
+        return "NO_VEIN".equalsIgnoreCase(s) || "ore.mix.none".equalsIgnoreCase(s);
     }
 
     /**
@@ -231,6 +347,11 @@ public class VisualProspectingBridge {
         }
 
         Object veinTypeObj = resolveVeinType(veinName);
+        if (isNoVein(veinTypeObj)) {
+            GTNHOreScannerMod.LOG.warn("Could not resolve valid VeinType for vein '" + veinName + "'; skipping map position creation.");
+            return null;
+        }
+
         short veinTypeId = resolveVeinTypeId(veinName, veinTypeObj);
 
         try {
@@ -303,48 +424,83 @@ public class VisualProspectingBridge {
 
         String[] candidateNames = generateVeinNameVariants(veinName);
 
-        // Try VeinTypeCaching.getVeinType(String)
+        // 1. Try VeinTypeCaching.getVeinType(String)
         if (getVeinTypeStringMethod != null) {
             for (String name : candidateNames) {
                 try {
                     Object result = getVeinTypeStringMethod.invoke(null, name);
-                    if (result != null) {
+                    if (result != null && !isNoVein(result)) {
                         return result;
                     }
                 } catch (Throwable ignored) {}
             }
         }
 
-        // Try VeinTypeCaching.getVeinTypeId(String) -> getVeinType(short)
+        // 2. Try VeinTypeCaching.getVeinTypeId(String) -> getVeinType(short)
         if (getVeinTypeIdMethod != null && getVeinTypeShortMethod != null) {
             for (String name : candidateNames) {
                 try {
                     Object idObj = getVeinTypeIdMethod.invoke(null, name);
                     if (idObj instanceof Number) {
                         short id = ((Number) idObj).shortValue();
-                        Object result = getVeinTypeShortMethod.invoke(null, id);
-                        if (result != null) {
-                            return result;
+                        if (id > 0) {
+                            Object result = getVeinTypeShortMethod.invoke(null, id);
+                            if (result != null && !isNoVein(result)) {
+                                return result;
+                            }
                         }
                     }
                 } catch (Throwable ignored) {}
             }
         }
 
-        // Try VeinType static lookup or enum values
+        // 3. Scan VeinTypeCaching.getVeinTypes() directly by comparing name and localized vein name
+        if (getVeinTypesMethod != null) {
+            try {
+                Object col = getVeinTypesMethod.invoke(null);
+                if (col instanceof Collection<?>) {
+                    Collection<?> types = (Collection<?>) col;
+                    // First pass: exact match on name or getVeinName()
+                    for (Object vt : types) {
+                        if (isNoVein(vt)) continue;
+                        String typeName = getVeinTypeName(vt);
+                        String locName = getVeinTypeLocalizedName(vt);
+                        for (String cand : candidateNames) {
+                            if (cand.equalsIgnoreCase(typeName) || cand.equalsIgnoreCase(locName)) {
+                                return vt;
+                            }
+                        }
+                    }
+                    // Second pass: normalized match (contains / stripped symbols)
+                    String normalizedSearch = normalizeVeinName(veinName);
+                    for (Object vt : types) {
+                        if (isNoVein(vt)) continue;
+                        String typeName = normalizeVeinName(getVeinTypeName(vt));
+                        String locName = normalizeVeinName(getVeinTypeLocalizedName(vt));
+                        if ((!typeName.isEmpty() && (typeName.contains(normalizedSearch) || normalizedSearch.contains(typeName))) ||
+                            (!locName.isEmpty() && (locName.contains(normalizedSearch) || normalizedSearch.contains(locName)))) {
+                            return vt;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 4. Try VeinType static lookup or enum values
         if (veinTypeClass != null) {
             try {
                 Method mGet = findMethod(veinTypeClass, "getVeinType", String.class);
                 if (mGet != null && Modifier.isStatic(mGet.getModifiers())) {
                     for (String name : candidateNames) {
                         Object result = mGet.invoke(null, name);
-                        if (result != null) return result;
+                        if (result != null && !isNoVein(result)) return result;
                     }
                 }
 
                 // If VeinType is an Enum, scan constants
                 if (veinTypeClass.isEnum()) {
                     for (Object constant : veinTypeClass.getEnumConstants()) {
+                        if (isNoVein(constant)) continue;
                         String constName = constant.toString();
                         for (String name : candidateNames) {
                             if (constName.equalsIgnoreCase(name) ||
@@ -354,16 +510,39 @@ public class VisualProspectingBridge {
                         }
                     }
                 }
-
-                // Fallback to static field NO_VEIN if present
-                Field fNoVein = findField(veinTypeClass, "NO_VEIN", "noVein");
-                if (fNoVein != null && Modifier.isStatic(fNoVein.getModifiers())) {
-                    return fNoVein.get(null);
-                }
             } catch (Throwable ignored) {}
         }
 
         return null;
+    }
+
+    private static String getVeinTypeName(Object vt) {
+        if (vt == null) return "";
+        try {
+            Field f = findField(vt.getClass(), "name");
+            if (f != null) {
+                Object val = f.get(vt);
+                return val != null ? val.toString() : "";
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    private static String getVeinTypeLocalizedName(Object vt) {
+        if (vt == null) return "";
+        try {
+            Method m = findMethod(vt.getClass(), "getVeinName");
+            if (m != null) {
+                Object val = m.invoke(vt);
+                return val != null ? val.toString() : "";
+            }
+        } catch (Throwable ignored) {}
+        return "";
+    }
+
+    private static String normalizeVeinName(String s) {
+        if (s == null) return "";
+        return s.toLowerCase().replace("ore.mix.", "").replace(".", "").replace("_", "").replace("&", "").replace(" ", "").trim();
     }
 
     private static short resolveVeinTypeId(String veinName, Object veinTypeObj) {
@@ -402,6 +581,7 @@ public class VisualProspectingBridge {
             list.add(veinName.substring("ore.mix.".length()));
         } else {
             list.add("ore.mix." + veinName);
+            list.add("ore.mix." + veinName.toLowerCase());
         }
 
         String simple = veinName.replace("ore.mix.", "").replace(".", "_");
@@ -559,8 +739,8 @@ public class VisualProspectingBridge {
         if (veinSourceClass != null) {
             try {
                 if (veinSourceClass.isEnum()) {
-                    // VisualProspecting trust levels: API (3) > RESCAN (2) > GENERATED (1) > UNKNOWN (0)
-                    String[] preferredNames = new String[] { "API", "RESCAN", "PROSPECTION", "GENERATED" };
+                    // VisualProspecting trust levels: ADMIN (4) > API (3) > RESCAN (2) > GENERATED (1) > UNKNOWN (0)
+                    String[] preferredNames = new String[] { "ADMIN", "API", "RESCAN", "GENERATED" };
                     for (String preferred : preferredNames) {
                         for (Object constant : veinSourceClass.getEnumConstants()) {
                             if (preferred.equalsIgnoreCase(constant.toString())) {
@@ -576,7 +756,7 @@ public class VisualProspectingBridge {
                         veinSourceProspection = veinSourceClass.getEnumConstants()[0];
                     }
                 } else {
-                    Field fProsp = findField(veinSourceClass, "API", "rescan", "PROSPECTION", "prospection");
+                    Field fProsp = findField(veinSourceClass, "ADMIN", "admin", "API", "api", "RESCAN", "rescan");
                     if (fProsp != null && Modifier.isStatic(fProsp.getModifiers())) {
                         veinSourceProspection = fProsp.get(null);
                     }
@@ -587,14 +767,19 @@ public class VisualProspectingBridge {
 
     private static void resolveMethods() {
         if (clientCacheClass != null) {
-            putOreVeinsMethod = findMethod(clientCacheClass, "putOreVeins", List.class, Collection.class);
-            if (putOreVeinsMethod == null) {
-                putOreVeinsMethod = findMethodByName(clientCacheClass, "putOreVeins");
+            putOreVeinsSingleArgMethod = findMethod(clientCacheClass, "putOreVeins", List.class);
+            if (putOreVeinsSingleArgMethod == null) {
+                putOreVeinsSingleArgMethod = findMethod(clientCacheClass, "putOreVeins", Collection.class);
             }
 
-            putOreVeinMethod = findMethod(clientCacheClass, "putOreVein", oreVeinPositionClass, Object.class);
+            putOreVeinsTwoArgMethod = findMethod(clientCacheClass, "putOreVeins", List.class, boolean.class);
+            if (putOreVeinsTwoArgMethod == null) {
+                putOreVeinsTwoArgMethod = findMethod(clientCacheClass, "putOreVeins", Collection.class, boolean.class);
+            }
+
+            putOreVeinMethod = findMethod(clientCacheClass, "putOreVein", oreVeinPositionClass);
             if (putOreVeinMethod == null) {
-                putOreVeinMethod = findMethodByName(clientCacheClass, "putOreVein");
+                putOreVeinMethod = findMethod(clientCacheClass, "putOreVein", Object.class);
             }
 
             putProspectionResultsMethod = findMethod(clientCacheClass, "putProspectionResults", List.class, List.class);
@@ -604,6 +789,11 @@ public class VisualProspectingBridge {
             getVeinTypeStringMethod = findMethod(veinTypeCachingClass, "getVeinType", String.class);
             getVeinTypeIdMethod = findMethod(veinTypeCachingClass, "getVeinTypeId", String.class);
             getVeinTypeShortMethod = findMethod(veinTypeCachingClass, "getVeinType", short.class);
+            getVeinTypesMethod = findMethod(veinTypeCachingClass, "getVeinTypes");
+        }
+
+        if (veinTypeClass != null) {
+            noVeinField = findField(veinTypeClass, "NO_VEIN", "noVein");
         }
     }
 

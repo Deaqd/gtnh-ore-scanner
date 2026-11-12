@@ -6,7 +6,7 @@
 ![Side](https://img.shields.io/badge/Side-Client--Only-purple.svg)
 ![Java](https://img.shields.io/badge/Java-8%20%7C%2017%20%7C%2021-yellow.svg)
 ![Tests](https://img.shields.io/badge/Tests-26%2F26%20Passing-brightgreen.svg)
-![Release](https://img.shields.io/badge/Release-v1.0.1-blue.svg)
+![Release](https://img.shields.io/badge/Release-v1.0.2-blue.svg)
 ![License](https://img.shields.io/badge/License-LGPL--3.0-blue.svg)
 
 A high-performance, client-side utility mod for **Minecraft 1.7.10** and the **GregTech: New Horizons 2.9+** modpack. It scans loaded client chunks for GregTech 5 Unofficial (GT5U) ore veins, performs intelligent multi-ore layer disambiguation, and directly registers detected veins into the **VisualProspecting** cache for instant, seamless visualization on **JourneyMap** and **Xaero's World Map**.
@@ -93,9 +93,9 @@ flowchart TD
 
 ### Step-by-Step Installation
 1. Go to the [Releases](https://github.com/Deaqd/gtnh-ore-scanner/releases) page.
-2. Download the latest release binary: `gtnh_orescanner-1.0.1.jar`.
+2. Download the latest release binary: `gtnh_orescanner-1.0.2.jar`.
 3. Locate your GTNH instance directory (e.g. Prism Launcher, MultiMC, or `.minecraft/`).
-4. Copy `gtnh_orescanner-1.0.1.jar` into your `mods/` folder.
+4. Copy `gtnh_orescanner-1.0.2.jar` into your `mods/` folder.
 5. Launch the game and load into any world or multiplayer server!
 
 ---
@@ -174,12 +174,28 @@ The project uses **RetroFuturaGradle (RFG 1.4.9)** with modern JVM toolchain sup
 
 5. The built, reobfuscated jar file will be available at:
    ```text
-   build/libs/gtnh_orescanner-1.0.1.jar
+   build/libs/gtnh_orescanner-1.0.2.jar
    ```
 
 ---
 
 ## 📦 Changelog & Version History
+
+### [v1.0.2] - 2026-11-13
+#### ✨ What's New
+- **Instant Map & Minimap Display**: Integrated live map layer invalidation and refresh hooks (`OreVeinLayerManager.forceRefresh()` and `LayerRefreshEvent`), allowing scanned veins to appear immediately on JourneyMap and Xaero's World Map without needing to close and reopen the map interface.
+- **Deep VeinType Matching Engine**: Added multi-tier resolution across VisualProspecting's `VeinTypeCaching` registry—matching both internal identifiers (`ore.mix.magnetite`) and localized display names (`Magnetite & Gold`), ensuring custom and modpack-specific ore mixes map cleanly.
+- **High-Trust VeinSource Administration**: Elevated default vein registration trust level to `VeinSource.ADMIN` / `VeinSource.API` so that client-scanned veins always overwrite unverified or outdated cache stubs.
+
+#### 🐛 What's Fixed
+- **Map Waypoints Missing Bug ("Found ores, but not showing on the map")**:
+  - Fixed reflection argument mismatch in `VisualProspectingBridge.injectPositionsDirect` where `putOreVeins` was invoked with 1 parameter against a 2-parameter overload (`IllegalArgumentException: wrong number of arguments: 1 expected: 2`), which had prevented detected veins from being saved into `ClientCache`.
+  - Added dual support for both single-argument `putOreVeins(List)` and two-argument `putOreVeins(List, boolean)` signatures, with a dynamic reflective fallback loop.
+  - Fixed `NO_VEIN` false positive guard: VisualProspecting returns `VeinType.NO_VEIN` instead of `null` when a key is not found; added `isNoVein` validation so dummy invisible veins are never created.
+
+#### 📝 Notes
+- Replaces `v1.0.1`.
+- Fully verified in live GTNH 2.9.0 client running Java 25 / Java 17-21.
 
 ### [v1.0.1] - 2026-11-13
 #### ✨ What's New
