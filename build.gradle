@@ -1,0 +1,108 @@
+plugins {
+    id 'java'
+    id 'com.gtnewhorizons.retrofuturagradle' version '1.4.9'
+}
+
+group = project.property('modGroup')
+version = project.property('modVersion')
+base {
+    archivesName = project.property('modId')
+}
+archivesBaseName = project.property('modId')
+
+def configuredJavaVersion = Integer.parseInt((project.findProperty('javaVersion') ?: '17').toString())
+def targetBytecodeVersion = Integer.parseInt((project.findProperty('targetJavaVersion') ?: '8').toString())
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(configuredJavaVersion)
+    }
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.fork = true
+    sourceCompatibility = "1.${targetBytecodeVersion}"
+    targetCompatibility = "1.${targetBytecodeVersion}"
+}
+
+minecraft {
+    mcVersion = project.property('minecraftVersion')
+    mcpMappingChannel = project.property('mcpChannel')
+    mcpMappingVersion = project.property('mcpVersion')
+    username = 'DevPlayer'
+    applyMcDependencies = true
+    useDependencyAccessTransformers = true
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'GTNH Nexus'
+        url = uri('https://nexus.gtnewhorizons.com/repository/public/')
+        mavenContent {
+            includeGroup 'com.github.GTNewHorizons'
+            includeGroup 'com.gtnewhorizons'
+            includeGroupByRegex 'com\\.gtnewhorizons\\..+'
+            includeGroup 'com.github.SinTh0r4s'
+        }
+    }
+    maven {
+        name = 'Forge'
+        url = uri('https://maven.minecraftforge.net/')
+    }
+    maven {
+        name = 'CurseMaven'
+        url = uri('https://cursemaven.com')
+        content {
+            includeGroup 'curse.maven'
+        }
+    }
+}
+
+dependencies {
+    // GregTech 5 Unofficial (GT5U)
+    implementation(rfg.deobf("com.github.GTNewHorizons:GT5-Unofficial:${project.property('gt5uVersion')}:dev")) {
+        transitive = false
+    }
+
+    // VisualProspecting
+    implementation(rfg.deobf("com.github.GTNewHorizons:VisualProspecting:${project.property('visualProspectingVersion')}:dev")) {
+        transitive = false
+    }
+
+    testImplementation 'junit:junit:4.13.2'
+}
+
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'mcversion', project.property('minecraftVersion')
+
+    filesMatching('mcmod.info') {
+        expand(
+            'version': project.version,
+            'mcversion': project.property('minecraftVersion')
+        )
+    }
+}
+
+tasks.named('jar', Jar) {
+    archiveBaseName.set(project.property('modId'))
+    archiveVersion.set(project.property('modVersion'))
+    archiveClassifier.set('')
+    
+    manifest {
+        attributes([
+            'ModSide': 'CLIENT',
+            'Specification-Title': project.property('modName'),
+            'Specification-Version': project.property('modVersion'),
+            'Specification-Vendor': 'GTNH Team',
+            'Implementation-Title': project.property('modName'),
+            'Implementation-Version': project.property('modVersion'),
+            'Implementation-Vendor': 'GTNH Team',
+            'FMLCorePluginContainsFMLMod': 'false',
+            'Created-By': "Gradle ${gradle.gradleVersion}"
+        ])
+    }
+}

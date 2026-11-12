@@ -1,0 +1,19 @@
+[
+  {
+    "modid": "gtnh_orescanner",
+    "name": "GTNH Ore Vein Scanner",
+    "description": "Client-side ore vein scanner integrating with VisualProspecting for GTNH.",
+    "version": "1.0.0",
+    "mcversion": "1.7.10",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["GTNH Team"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": [
+      "visualprospecting",
+      "gregtech"
+    ]
+  }
+]
