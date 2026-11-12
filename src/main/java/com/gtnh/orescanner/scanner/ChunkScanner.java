@@ -3,6 +3,8 @@ package com.gtnh.orescanner.scanner;
 import com.gtnh.orescanner.config.OreScannerConfig;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
+import gregtech.common.ores.OreInfo;
+import gregtech.common.ores.OreManager;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -10,8 +12,10 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,6 +23,10 @@ import java.util.List;
 /**
  * Scans loaded client chunks safely on the Minecraft client thread
  * and extracts OreSnapshots of GT ore blocks.
+ *
+ * Supports modern GTNH (GregTech 5.09.54+ with non-TileEntity Block ores)
+ * via ExtendedBlockStorage array scanning and OreManager adapters,
+ * with graceful fallback to legacy TileEntityOres for older environments.
  */
 @SideOnly(Side.CLIENT)
 public class ChunkScanner {
@@ -73,28 +81,72 @@ public class ChunkScanner {
                 }
 
                 totalLoadedChunks++;
-
-                // Safely copy tile entities to avoid ConcurrentModificationException
-                List<TileEntity> tileEntities = extractTileEntitiesSafely(chunk);
                 int oresFoundInChunk = 0;
 
-                for (TileEntity te : tileEntities) {
-                    if (te == null) continue;
+                // PRIMARY PATH (Modern GTNH / GregTech 5.09.54+): Scan chunk ExtendedBlockStorage for GT Block Ores
+                ExtendedBlockStorage[] storageArrays = chunk.getBlockStorageArray();
+                if (storageArrays != null) {
+                    for (ExtendedBlockStorage storage : storageArrays) {
+                        if (storage == null || storage.isEmpty()) {
+                            continue;
+                        }
 
-                    if (isGTOreTileEntity(te)) {
-                        short meta = getGTOreMeta(te);
-                        // Filter out invalid metas and small ores (meta >= 16000)
-                        if (meta >= 0 && meta < 16000) {
-                            snapshots.add(new OreSnapshot(
-                                    chunk.xPosition,
-                                    chunk.zPosition,
-                                    te.xCoord,
-                                    te.yCoord,
-                                    te.zCoord,
-                                    meta,
-                                    dimensionId
-                            ));
-                            oresFoundInChunk++;
+                        int baseY = storage.getYLocation();
+                        for (int y = 0; y < 16; y++) {
+                            int worldY = baseY + y;
+                            for (int z = 0; z < 16; z++) {
+                                int worldZ = (chunk.zPosition << 4) + z;
+                                for (int x = 0; x < 16; x++) {
+                                    Block block = storage.getBlockByExtId(x, y, z);
+                                    if (block == null || block == Blocks.air) {
+                                        continue;
+                                    }
+                                    if (isCommonNonOreBlock(block)) {
+                                        continue;
+                                    }
+
+                                    int meta = storage.getExtBlockMetadata(x, y, z);
+                                    int matId = getGTOreMaterialId(block, meta);
+                                    if (matId >= 0 && matId < 16000) {
+                                        int worldX = (chunk.xPosition << 4) + x;
+                                        snapshots.add(new OreSnapshot(
+                                                chunk.xPosition,
+                                                chunk.zPosition,
+                                                worldX,
+                                                worldY,
+                                                worldZ,
+                                                matId,
+                                                dimensionId
+                                        ));
+                                        oresFoundInChunk++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // FALLBACK PATH (Legacy GT5U): Scan chunkTileEntityMap if block scan found no ores
+                if (oresFoundInChunk == 0) {
+                    List<TileEntity> tileEntities = extractTileEntitiesSafely(chunk);
+                    for (TileEntity te : tileEntities) {
+                        if (te == null) continue;
+
+                        if (isGTOreTileEntity(te)) {
+                            short meta = getGTOreMeta(te);
+                            // Filter out invalid metas and small ores (meta >= 16000)
+                            if (meta >= 0 && meta < 16000) {
+                                snapshots.add(new OreSnapshot(
+                                        chunk.xPosition,
+                                        chunk.zPosition,
+                                        te.xCoord,
+                                        te.yCoord,
+                                        te.zCoord,
+                                        meta,
+                                        dimensionId
+                                ));
+                                oresFoundInChunk++;
+                            }
                         }
                     }
                 }
@@ -110,6 +162,99 @@ public class ChunkScanner {
         }
 
         return new ScanResult(snapshots, totalLoadedChunks, chunksWithOres, chunksWithSubterraneanStoneNoOres, dimensionId);
+    }
+
+    /**
+     * Resolves the GregTech material ID for a given block and metadata.
+     * Uses OreManager to handle GT5U ores, GT++ ores, BartWorks ores, and unifications.
+     * Returns -1 if the block is not a valid large/vein ore.
+     */
+    public static int getGTOreMaterialId(Block block, int meta) {
+        if (block == null || block == Blocks.air) {
+            return -1;
+        }
+
+        try {
+            OreInfo<?> info = OreManager.getOreInfo(block, meta);
+            if (info != null) {
+                try {
+                    if (!info.isSmall && info.material != null) {
+                        return info.material.getId();
+                    }
+                } finally {
+                    info.close();
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // Fallback: reflection-based GTBlockOre check without requiring compile-time gtnhlib classes
+        Class<?> clazz = block.getClass();
+        if ("gregtech.common.blocks.GTBlockOre".equals(clazz.getName())) {
+            try {
+                Method mIsSmall = clazz.getMethod("isSmallOre", int.class);
+                Boolean isSmall = (Boolean) mIsSmall.invoke(block, meta);
+                if (isSmall != null && !isSmall) {
+                    Method mGetMat = clazz.getMethod("getMaterial", int.class);
+                    Object mat = mGetMat.invoke(block, meta);
+                    if (mat != null) {
+                        Method mGetId = mat.getClass().getMethod("getId");
+                        Object id = mGetId.invoke(mat);
+                        if (id instanceof Number) {
+                            return ((Number) id).intValue();
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        return -1;
+    }
+
+    /**
+     * Quick identity check to filter out common non-ore blocks with a single pointer comparison.
+     */
+    public static boolean isCommonNonOreBlock(Block block) {
+        return block == Blocks.stone
+                || block == Blocks.dirt
+                || block == Blocks.grass
+                || block == Blocks.gravel
+                || block == Blocks.bedrock
+                || block == Blocks.sand
+                || block == Blocks.sandstone
+                || block == Blocks.water
+                || block == Blocks.flowing_water
+                || block == Blocks.lava
+                || block == Blocks.flowing_lava
+                || block == Blocks.netherrack
+                || block == Blocks.soul_sand
+                || block == Blocks.end_stone
+                || block == Blocks.cobblestone
+                || block == Blocks.mossy_cobblestone
+                || block == Blocks.clay
+                || block == Blocks.hardened_clay
+                || block == Blocks.stained_hardened_clay
+                || block == Blocks.snow
+                || block == Blocks.snow_layer
+                || block == Blocks.ice
+                || block == Blocks.packed_ice
+                || block == Blocks.leaves
+                || block == Blocks.leaves2
+                || block == Blocks.log
+                || block == Blocks.log2
+                || block == Blocks.torch
+                || block == Blocks.ladder
+                || block == Blocks.tallgrass
+                || block == Blocks.red_flower
+                || block == Blocks.yellow_flower
+                || block == Blocks.double_plant
+                || block == Blocks.glass
+                || block == Blocks.glass_pane
+                || block == Blocks.wooden_slab
+                || block == Blocks.stone_slab
+                || block == Blocks.double_wooden_slab
+                || block == Blocks.double_stone_slab
+                || block == Blocks.iron_bars
+                || block == Blocks.obsidian;
     }
 
     /**

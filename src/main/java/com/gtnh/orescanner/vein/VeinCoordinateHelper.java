@@ -32,10 +32,14 @@ public final class VeinCoordinateHelper {
      * @return Normalized vein center chunk coordinate
      */
     public static int getVeinCenterChunk(int chunkCoord) {
-        if (chunkCoord >= 0) {
-            return (chunkCoord / 3) * 3 + 1;
-        } else {
-            return -((-chunkCoord / 3) * 3 + 1);
+        try {
+            return com.sinthoras.visualprospecting.Utils.mapToCenterOreChunkCoord(chunkCoord);
+        } catch (Throwable ignored) {
+            if (chunkCoord >= 0) {
+                return (chunkCoord / 3) * 3 + 1;
+            } else {
+                return -((-chunkCoord / 3) * 3 + 1);
+            }
         }
     }
 

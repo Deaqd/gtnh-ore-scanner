@@ -17,6 +17,7 @@ public class ScannerTest {
         suite.testScanResultProperties();
         suite.testScanResultAntiXrayLogic();
         suite.testOreSnapshotMetaFilteringLogic();
+        suite.testCommonNonOreBlockFilter();
 
         System.out.println("ALL SCANNER TESTS PASSED SUCCESSFULLY!");
     }
@@ -114,5 +115,16 @@ public class ScannerTest {
         assertTrue(largeOreMeta >= 0 && largeOreMeta < 16000, "Large ore 81 must pass filter");
         assertTrue(!(smallOreMeta >= 0 && smallOreMeta < 16000), "Small ore 16027 must be rejected by filter");
         assertTrue(!(invalidMeta >= 0 && invalidMeta < 16000), "Negative meta must be rejected by filter");
+    }
+
+    @Test
+    public void testCommonNonOreBlockFilter() {
+        // Blocks.air is handled before filter, common blocks return true
+        assertTrue(ChunkScanner.isCommonNonOreBlock(net.minecraft.init.Blocks.stone), "Stone must be filtered");
+        assertTrue(ChunkScanner.isCommonNonOreBlock(net.minecraft.init.Blocks.dirt), "Dirt must be filtered");
+        assertTrue(ChunkScanner.isCommonNonOreBlock(net.minecraft.init.Blocks.gravel), "Gravel must be filtered");
+        assertTrue(ChunkScanner.isCommonNonOreBlock(net.minecraft.init.Blocks.bedrock), "Bedrock must be filtered");
+        assertTrue(ChunkScanner.isCommonNonOreBlock(net.minecraft.init.Blocks.netherrack), "Netherrack must be filtered");
+        assertTrue(ChunkScanner.isCommonNonOreBlock(net.minecraft.init.Blocks.end_stone), "End stone must be filtered");
     }
 }
